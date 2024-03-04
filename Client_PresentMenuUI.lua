@@ -19,7 +19,7 @@ function Client_PresentMenuUI(rootParent, setMaxSize, setScrollable, game, close
     end
 
     AddStringToUI(x,
-        "",
+        "Hello <#ff0000>World",
         200);
     print(x.GetPreferredWidth());
 end
