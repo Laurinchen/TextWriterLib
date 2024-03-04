@@ -367,7 +367,7 @@ local function ParseElements(Elements, MaxWidth)
                         local after = result[3]
                         ---@cast after TextPiece
 
-                        afterWordbreak.Width = afterWordbreak.Width + GetTextWidth(before.Text) + 15.4;
+                        afterWordbreak.Width = afterWordbreak.Width + GetTextWidth(before.Text) + 15.4 + 3;
                         table.insert(afterWordbreak.Elements, before);
 
                         table.insert(toReturn, afterWordbreak);
@@ -382,7 +382,7 @@ local function ParseElements(Elements, MaxWidth)
                     currentWidth = currentWidth + width;
                 end
             end
-            afterWordbreak.Width = currentWidth - beforeWordbreak.Width + 15.4;
+            afterWordbreak.Width = currentWidth - beforeWordbreak.Width + 15.4 + 3;
             table.insert(afterWordbreak.Elements, element);
         end
     end
