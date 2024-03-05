@@ -23,5 +23,5 @@ function Client_PresentMenuUI(rootParent, setMaxSize, setScrollable, game, close
     -- AddStringToUI(x,
     --     "Hello<#ff0000>Wooooooooooooooooooooooooooooooooorld<wbr>It goes<#00ff00> over several lines <#0000ff> and has many colors!",
     -- 400);
-    AddStringToUI(x, "Lorem ipsum dolor <#ff0000>sit amet, consetetur sadipscing elitr, <#00ff00>sed diam nonumy eirmod tempor invidunt ut <#0000ff>labore et dolore magna aliquyam erat, sed diam volu<#ff0000>ptua. At vero eos et accusam et justo <#00ff00>duo dolores et ea rebum. Stet clita<#0000ff> kasd gubergren, no sea takimata<#ffff00> sanctus est Lorem ipsum dolor sit amet. <#ff0000>Lorem ipsum dolor sit amet, consetetur <#ffffff>sadipscing elitr, sed diam nonumy eir<#0000ff>mod tempor invidunt ut labore et dolore magna <#00ffaa>aliquyam erat, sed diam voluptua. At vero eos et <#ff0000>accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.", 200);
+    AddStringToUI(x, "Let's see <red>if this <blue> finally <#ffffff>works!", 200);
 end

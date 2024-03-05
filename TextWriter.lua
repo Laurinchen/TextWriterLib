@@ -1,5 +1,6 @@
 require("Annotations");
 require("CharWidths");
+require("Colors");
 
 ---@type table<string, number>
 local Constants = {
@@ -446,33 +447,23 @@ function AddStringToUI(UIGroup, Text, MaxWidth)
     end
 
     for _, line in ipairs(ParseElements(GetElements(Text), MaxWidth)) do
+        ---@type HorizontalLayoutGroup
         local hlg = UI.CreateHorizontalLayoutGroup(UIGroup);
 
-        local toprint = ""
-        for _, striiiiiing in ipairs(line.Elements) do
-            toprint = toprint .. striiiiiing.Text .. "\\n";
-        end
-
-        print("---"..toprint.."---")
-
-        print("line.width", line.Width)
-        local tw = -15.4 + 3;
         for _, textpiece in ipairs(line.Elements) do
             ---@type Label
             local label = UI.CreateLabel(hlg);
             
-            tw = tw + math.ceil(GetTextWidth(textpiece.Text)) + 15.4 + 3 + 1;
-            
+            if string.sub(textpiece.Color, 1, 1) ~= "#" then
+                textpiece.Color = Colors[textpiece.Color]
+            end
+
             label.SetPreferredWidth(math.ceil(GetTextWidth(textpiece.Text)) + Constants.ExtraSpacePerText);
             label.SetFlexibleWidth(0);
-            print(textpiece.Text, GetTextWidth(textpiece.Text), label.GetPreferredWidth());
             if textpiece.Color ~= nil and not (textpiece.Color == "") then
                 label.SetColor(textpiece.Color);
             end
             label.SetText(textpiece.Text);
         end
-        print("Actual width", tw)
     end
 end
-
---local a = ParseElements(GetElements("Hello<#ff0000>Wooooooooooooooooooooooooooooooooorld<wbr>It goes<#00ff00> over several lines <#0000ff> and has many colors!"), 200)
