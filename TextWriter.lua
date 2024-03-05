@@ -356,7 +356,7 @@ local function ParseElements(Elements, MaxWidth)
                 local c = string.sub(element.Text, ci, ci);
                 ---@type number
                 local width = W[c] or 10;
-                if currentWidth + width + Constants.GapSize + Constants.LeftPadding >= MaxWidth then
+                if currentWidth + width + Constants.GapSize + Constants.LeftPadding > MaxWidth then
                     ---@type string, integer
                     local _, count = string.gsub(element.Text, "%s", "", 1);
                     if count == 0 and #beforeWordbreak.Elements > 0 then
@@ -383,7 +383,7 @@ local function ParseElements(Elements, MaxWidth)
 
                         element = after;
                         ci = 1;
-                        currentWidth = 0;
+                        currentWidth = -Constants.GapSize + Constants.LeftPadding;
                     end
                 else
                     ci = ci + 1;
