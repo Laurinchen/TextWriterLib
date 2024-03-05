@@ -1,15 +1,23 @@
 require("Annotations");
 require("CharWidths");
 
+---@type table<string, number>
+local Constants = {
+    GapSize = 15.4,         -- CSS Flex gapsize == 1em == 15.4px
+    LeftPadding = 3,        -- In CSS: The left element, not the padding-left element!
+    ExtraSpacePerText = 1;  -- Idk, the space might be too short without it
+};
+
+
 ---@enum ParsingMode
-ParsingMode = {
+local ParsingMode = {
     NotParsing = 0,
     ParsingFirstCharOfColor = 1,
     ParsingOtherCharsOfColor = 2
 };
 
 ---@enum ElementType
-ElementType = {
+local ElementType = {
     TextPiece = "TextPiece",
     Tag = "Tag",
     Newline = "Newline",
@@ -367,7 +375,7 @@ local function ParseElements(Elements, MaxWidth)
                         local after = result[3]
                         ---@cast after TextPiece
 
-                        afterWordbreak.Width = afterWordbreak.Width + GetTextWidth(before.Text) + 15.4 + 3;
+                        afterWordbreak.Width = afterWordbreak.Width + math.ceil(GetTextWidth(before.Text)) + 1 + 15.4 + 3;
                         table.insert(afterWordbreak.Elements, before);
 
                         table.insert(toReturn, afterWordbreak);
@@ -382,7 +390,7 @@ local function ParseElements(Elements, MaxWidth)
                     currentWidth = currentWidth + width;
                 end
             end
-            afterWordbreak.Width = currentWidth - beforeWordbreak.Width + 15.4 + 3;
+            afterWordbreak.Width = beforeWordbreak.Width + afterWordbreak.Width + math.ceil(GetTextWidth(element.Text)) + 1 + 15.4 + 3;
             table.insert(afterWordbreak.Elements, element);
         end
     end
@@ -398,8 +406,8 @@ local function ParseElements(Elements, MaxWidth)
 end
 
 ---Internal functions
----@type table <string, function>
-RabbitLibTextWriter = {
+---@type table<string, function | table<string, number>>
+KaninchenLibTextWriter = {
     TestPositionField=TestPositionField,
     CreatePosition=CreatePosition,
     TestPosition=TestPosition,
@@ -412,6 +420,9 @@ RabbitLibTextWriter = {
     ParseElements=ParseElements,
     GetTextWidth=GetTextWidth,
     AddNewlines=AddNewlines,
+    Constants=Constants,
+    ParsingMode=ParsingMode,
+    ElementType=ElementType
 };
 
 ---@param UIGroup HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject
