@@ -312,10 +312,10 @@ local function ParseElements(Elements, MaxWidth)
     local currentColor = "";
 
     ---@type {Width: number, Elements: TextPiece[]}
-    local beforeWordbreak = { Width = -Constants.GapSize + Constants.LeftPadding, Elements = {} };
+    local beforeWordbreak = { Width = -Constants.GapSize + 2*Constants.LeftPadding, Elements = {} };
 
     ---@type {Width: number, Elements: TextPiece[]}
-    local afterWordbreak = { Width = -Constants.GapSize + Constants.LeftPadding, Elements = {} };
+    local afterWordbreak = { Width = -Constants.GapSize + 2*Constants.LeftPadding, Elements = {} };
 
 
     while i <= #Elements do
@@ -329,8 +329,8 @@ local function ParseElements(Elements, MaxWidth)
             Extend(buffer.Elements, afterWordbreak.Elements);
             table.insert(toReturn, buffer);
 
-            beforeWordbreak = { Width = -Constants.GapSize + Constants.LeftPadding, Elements = {} };
-            afterWordbreak = { Width = -Constants.GapSize + Constants.LeftPadding, Elements = {} };
+            beforeWordbreak = { Width = -Constants.GapSize + 2*Constants.LeftPadding, Elements = {} };
+            afterWordbreak = { Width = -Constants.GapSize + 2*Constants.LeftPadding, Elements = {} };
             i = i + 1;
         elseif element.Type == ElementType.Tag then
             ---@cast element Tag
@@ -339,7 +339,7 @@ local function ParseElements(Elements, MaxWidth)
         elseif element.Type == ElementType.WordBreak then
             beforeWordbreak.Width = beforeWordbreak.Width + afterWordbreak.Width + Constants.GapSize - Constants.LeftPadding;
             Extend(beforeWordbreak.Elements, afterWordbreak.Elements);
-            afterWordbreak = { Width = -Constants.GapSize + Constants.LeftPadding, Elements = {} };
+            afterWordbreak = { Width = -Constants.GapSize + 2*Constants.LeftPadding, Elements = {} };
             i = i + 1;
         elseif element.Type == ElementType.TextPiece then
             i = i + 1;
@@ -361,7 +361,7 @@ local function ParseElements(Elements, MaxWidth)
                     local _, count = string.gsub(element.Text, "%s", "", 1);
                     if count == 0 and #beforeWordbreak.Elements > 0 then
                         table.insert(toReturn, beforeWordbreak);
-                        beforeWordbreak = { Width = -Constants.GapSize + Constants.LeftPadding, Elements = {} };
+                        beforeWordbreak = { Width = -Constants.GapSize + 2*Constants.LeftPadding, Elements = {} };
                         currentWidth = afterWordbreak.Width;
                         ci = 1;
                     else
@@ -379,11 +379,11 @@ local function ParseElements(Elements, MaxWidth)
                         table.insert(afterWordbreak.Elements, before);
 
                         table.insert(toReturn, afterWordbreak);
-                        afterWordbreak = { Width = -Constants.GapSize + Constants.LeftPadding, Elements = {} };
+                        afterWordbreak = { Width = -Constants.GapSize + 2*Constants.LeftPadding, Elements = {} };
 
                         element = after;
                         ci = 1;
-                        currentWidth = -Constants.GapSize + Constants.LeftPadding;
+                        currentWidth = -Constants.GapSize + 2*Constants.LeftPadding;
                     end
                 else
                     ci = ci + 1;
