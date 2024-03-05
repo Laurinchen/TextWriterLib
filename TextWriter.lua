@@ -356,7 +356,7 @@ local function ParseElements(Elements, MaxWidth)
                 local c = string.sub(element.Text, ci, ci);
                 ---@type number
                 local width = W[c] or 10;
-                if currentWidth + width + Constants.GapSize + Constants.LeftPadding >= MaxWidth-1 then
+                if currentWidth + width + Constants.GapSize + Constants.LeftPadding >= MaxWidth then
                     ---@type string, integer
                     local _, count = string.gsub(element.Text, "%s", "", 1);
                     if count == 0 and #beforeWordbreak.Elements > 0 then
@@ -463,7 +463,7 @@ function AddStringToUI(UIGroup, Text, MaxWidth)
             
             tw = tw + GetTextWidth(textpiece.Text) + 15.4 + 3;
             
-            label.SetPreferredWidth(GetTextWidth(textpiece.Text));
+            label.SetPreferredWidth(math.ceil(GetTextWidth(textpiece.Text)) + Constants.ExtraSpacePerText);
             label.SetFlexibleWidth(0);
             print(textpiece.Text, GetTextWidth(textpiece.Text), label.GetPreferredWidth());
             if textpiece.Color ~= nil and not (textpiece.Color == "") then
