@@ -461,7 +461,7 @@ function AddStringToUI(UIGroup, Text, MaxWidth)
             ---@type Label
             local label = UI.CreateLabel(hlg);
             
-            tw = tw + GetTextWidth(textpiece.Text) + 15.4 + 3;
+            tw = tw + math.ceil(GetTextWidth(textpiece.Text)) + 15.4 + 3 + 1;
             
             label.SetPreferredWidth(math.ceil(GetTextWidth(textpiece.Text)) + Constants.ExtraSpacePerText);
             label.SetFlexibleWidth(0);
