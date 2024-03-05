@@ -10,7 +10,7 @@ Feel free to make pull requests and open Issues
 ### Which files to copy
 - TextWriter.lua
 - CharWidths.lua
-- Colors.lua
+- Colors.lua<br>
 If not already in your Mod:
 - Annotations.lua
 
