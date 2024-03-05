@@ -1,7 +1,8 @@
 
----Width of every extended ASCII (0x00 to 0xFF) symbol in Warzone (Rounded up to 1 decimal point)
+--Note that pull requests to this file will not be honored
+
 ---@type table<string, number>
-W={}
+local W={}
 W[""]=0;
 W[" "]=4.3
 W["!"]=4.4
@@ -192,3 +193,8 @@ W["ü"]=8.8
 W["ý"]=7.5
 W["þ"]=9.1
 W["ÿ"]=7.5
+--Rename below if there's a naming conflict
+
+---Width of every extended ASCII (0x00 to 0xFF) symbol on the Warzone Website (Rounded up to 1 decimal point)
+---@type table<string, number>
+CharWidths = W;

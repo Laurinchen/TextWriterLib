@@ -53,4 +53,8 @@ c["cinnamon"]="#d2691e"
 c["charcoal"]="#36454f"
 c["fuchsia"]="#ff00ff"
 c["screamin' green"]="#76ff7a";
+--Rename below if there's a naming conflict
+
+---Table with common Color names as keys and their hexcode as values
+---@type table<string, string>
 Colors = c;
