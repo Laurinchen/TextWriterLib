@@ -456,12 +456,12 @@ function AddStringToUI(UIGroup, Text, MaxWidth)
         print("---"..toprint.."---")
 
         print("line.width", line.Width)
-        local tw = -15.4;
+        local tw = -15.4 + 3;
         for _, textpiece in ipairs(line.Elements) do
             ---@type Label
             local label = UI.CreateLabel(hlg);
             
-            tw = tw + GetTextWidth(textpiece.Text) + 15.4;
+            tw = tw + GetTextWidth(textpiece.Text) + 15.4 + 3;
             
             label.SetPreferredWidth(GetTextWidth(textpiece.Text));
             label.SetFlexibleWidth(0);
