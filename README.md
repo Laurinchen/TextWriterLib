@@ -18,7 +18,12 @@ If not already in your Mod:
 The main functions you will be using is `AddStringToUI`.<br>
 It has following signature:
 ```cpp
-void AddStringToUI(HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject UIGroup, string Text, number MaxWidth = 20, integer ExpectedDepth = 2);
+void AddStringToUI(
+    HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject UIGroup,
+    string Text,
+    number MaxWidth = 20,
+    integer ExpectedDepth = 2
+);
 ```
 #### UIGroup
 <b>UIGroup</b>
