@@ -8,7 +8,7 @@ local Constants = {
     LeftPadding = 3,       -- In CSS: The left property, not the padding-left property!
     ExtraSpacePerText = 1, -- Idk, the space might be too short without it
     DefaultCharWidth = 10, -- If a given char is not present in CharWidths
-    MinWidth = 20          -- Without it, the code my loop infinitely with a too small MaxWidth
+    MinWidth = 30          -- Without it, the code might loop infinitely with a too small MaxWidth
 };
 
 
@@ -188,7 +188,7 @@ local function GetElements(Text)
                     parsingmode = ParsingMode.NotParsing;
                     table.insert(Elements, CreateTag("", CreatePosition(to - 1, to)));
                     TextBuffer = "";
-                    from = to+1;
+                    from = to + 1;
                 end
             end
         elseif parsingmode == ParsingMode.ParsingOtherCharsOfColor then
@@ -309,6 +309,28 @@ local function Extend(a, b)
     end
 end
 
+---@param beforeWordbreak {Width: number, Elements: TextPiece[]}
+---@param afterWordbreak {Width: number, Elements: TextPiece[]}
+---@param toAdd TextPiece
+---@param didAWordbreak boolean
+local function AddToElements(beforeWordbreak, afterWordbreak, toAdd, didAWordbreak)
+    ---@type integer
+    local beforeWordbreakLength = #beforeWordbreak.Elements;
+    if didAWordbreak and beforeWordbreakLength ~= 0 then
+        ---@type TextPiece
+        local latestTextPiece = beforeWordbreak.Elements[beforeWordbreakLength];
+        beforeWordbreak.Width = beforeWordbreak.Width + GetTextWidth(toAdd.Text);
+        beforeWordbreak.Elements[beforeWordbreakLength] = CreateTextPiece(latestTextPiece.Text .. toAdd.Text,
+            CreatePosition(latestTextPiece.PositionInOriginal.From, toAdd.PositionInOriginal.To), latestTextPiece.Color);
+    else
+        afterWordbreak.Width = afterWordbreak.Width + math.ceil(GetTextWidth(toAdd.Text)) +
+            Constants.ExtraSpacePerText + Constants.GapSize + Constants.LeftPadding;
+        table.insert(afterWordbreak.Elements, toAdd);
+    end
+end
+
+
+
 ---@param Elements Element[]
 ---@param MaxWidth number
 ---@param ExpectedDepth integer
@@ -329,6 +351,9 @@ local function ParseElements(Elements, MaxWidth, ExpectedDepth)
     ---@type {Width: number, Elements: TextPiece[]}
     local afterWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
 
+    ---@type boolean
+    local didAWordbreak = false;
+
 
     while i <= #Elements do
         ---@type Element
@@ -343,21 +368,24 @@ local function ParseElements(Elements, MaxWidth, ExpectedDepth)
 
             beforeWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
             afterWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
+            didAWordbreak = false;
             i = i + 1;
         elseif element.Type == ElementType.Tag then
             ---@cast element Tag
             currentColor = element.Content;
+            didAWordbreak = false;
             i = i + 1;
         elseif element.Type == ElementType.WordBreak then
             beforeWordbreak.Width = beforeWordbreak.Width + afterWordbreak.Width + Constants.GapSize -
                 Constants.LeftPadding;
             Extend(beforeWordbreak.Elements, afterWordbreak.Elements);
             afterWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
+            didAWordbreak = true;
             i = i + 1;
         elseif element.Type == ElementType.TextPiece then
             i = i + 1;
-
             ---@cast element TextPiece
+
             element.Color = currentColor;
             ---@type number
             local currentWidth = beforeWordbreak.Width + afterWordbreak.Width + Constants.GapSize - Constants
@@ -389,12 +417,16 @@ local function ParseElements(Elements, MaxWidth, ExpectedDepth)
                         local after = result[3]
                         ---@cast after TextPiece
 
+                        AddToElements(beforeWordbreak, afterWordbreak, before, didAWordbreak);
+
                         ---@type Line;
                         local buffer = { Width = 0, Elements = {} };
                         if #beforeWordbreak.Elements > 0 then
                             buffer.Width = beforeWordbreak.Width;
                             Extend(buffer.Elements, beforeWordbreak.Elements);
                         end
+
+
                         buffer.Width = buffer.Width + afterWordbreak.Width;
                         Extend(buffer.Elements, afterWordbreak.Elements);
                         table.insert(toReturn, buffer);
@@ -402,18 +434,19 @@ local function ParseElements(Elements, MaxWidth, ExpectedDepth)
                         beforeWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
                         afterWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
 
+                        didAWordbreak = false;
                         element = after;
                         ci = 1;
                         currentWidth = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding;
+
                     end
                 else
                     ci = ci + 1;
                     currentWidth = currentWidth + width;
                 end
             end
-            afterWordbreak.Width = beforeWordbreak.Width + afterWordbreak.Width + math.ceil(GetTextWidth(element.Text)) +
-                Constants.ExtraSpacePerText + Constants.GapSize + Constants.LeftPadding;
-            table.insert(afterWordbreak.Elements, element);
+            AddToElements(beforeWordbreak, afterWordbreak, element, didAWordbreak);
+            didAWordbreak = false;
         end
     end
 
@@ -444,18 +477,16 @@ KaninchenLibTextWriter = {
     AddNewlines = AddNewlines,
     Constants = Constants,
     ParsingMode = ParsingMode,
-    ElementType = ElementType
+    ElementType = ElementType,
+    AddToElements = AddToElements
 };
 
 ---@param UIGroup HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject
 ---@param Text string
 ---@param MaxWidth? number
----@param ExpectedDepth? integer
-function AddStringToUI(UIGroup, Text, MaxWidth, ExpectedDepth)
-    ExpectedDepth = ExpectedDepth or 2;
-    -- if math.type(ExpectedDepth) == "float" then
-    --     ExpectedDepth = math.ceil(ExpectedDepth);
-    -- end
+---@param AncestorCountWithoutRoot? integer
+function AddStringToUI(UIGroup, Text, MaxWidth, AncestorCountWithoutRoot)
+    AncestorCountWithoutRoot = AncestorCountWithoutRoot or 0;
 
     if MaxWidth == nil then
         if UIGroup.GetPreferredWidth ~= nil then
@@ -467,7 +498,7 @@ function AddStringToUI(UIGroup, Text, MaxWidth, ExpectedDepth)
 
     MaxWidth = math.max(Constants.MinWidth, MaxWidth);
 
-    for _, line in ipairs(ParseElements(GetElements(Text), MaxWidth, ExpectedDepth)) do
+    for _, line in ipairs(ParseElements(GetElements(Text), MaxWidth, AncestorCountWithoutRoot + 2)) do
         ---@type HorizontalLayoutGroup
         local hlg = UI.CreateHorizontalLayoutGroup(UIGroup);
 

@@ -21,8 +21,8 @@ It has following signature:
 void AddStringToUI(
     HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject UIGroup,
     string Text,
-    number MaxWidth = 20,
-    integer ExpectedDepth = 2
+    number MaxWidth = 30,
+    integer AncestorCountWithoutRoot = 2
 );
 ```
 #### UIGroup
@@ -85,12 +85,19 @@ If not set, it will default to the preffered width of the UIGroup. If this is -1
 MaxWidth is smaller than 20, it will default to 20.<br>
 The default is not enough to properly display Texts, but it is enough to display most characters.<br>
 
-#### ExpectedDepth
-(Default 2)<br>
-This is pretty internal, but should be used if your `UIGroup` is in another UI Container (excluding rootParent).<br>
-It counts `UIGroup` as 1 and the `HorizontalLayoutGroup`s the library generates as 1, therefore the default is 1+1=2.<br>
-The general rule of thumb is `Count of ancestors (parents) of UIGroup (excluding rootParent) + 2`.<br>
-If `UIGroup` directly inherits `rootParent`, you won't need this parameter ever.<br>
+#### AncestorCountWithoutRoot
+(Default 0)<br>
+How many ancestors `UIGroup` has without counting `rootParent`.<br>
+For example:<br>
+```
+rootParent rootparent
+    ↳VerticalLayoutGroup a
+        ↳VerticalLayoutGroup b
+            ↳VerticalLayoutGroup UIGroup
+```
+In this case, `UIGroup` has, not counting `rootparent`, 2 ancestors (`a` and `b`).<br>
+Therefore, a 2 should be passed.<br>
+If `UIGroup` always inherits from `rootParent`, you won't ever need this parameter.
 
 ### Available Colors
 Next to hexcodes you can use predefines colors, listed in `Colors.lua`<br>
