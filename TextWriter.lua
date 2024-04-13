@@ -2,13 +2,16 @@ require("Annotations");
 require("CharWidths");
 require("Colors");
 
+---@cast UI UI
+
+
 ---@type table<string, number>
 local Constants = {
     GapSize = 15.4,        -- CSS Flex gapsize == 1em == 15.4px
     LeftPadding = 3,       -- In CSS: The left property, not the padding-left property!
     ExtraSpacePerText = 1, -- Idk, the space might be too short without it
     DefaultCharWidth = 10, -- If a given char is not present in CharWidths
-    MinWidth = 30          -- Without it, the code might loop infinitely with a too small MaxWidth
+    MinWidth = 30,         -- Without it, the code might loop infinitely with a too small MaxWidth
 };
 
 
@@ -38,6 +41,7 @@ local ElementType = {
 ---@class TextPiece: Element
 ---@field Text string
 ---@field Color? string
+---@field LastSpace? integer
 
 ---@class Tag: Element
 ---@field Content string
@@ -55,16 +59,19 @@ local ElementType = {
 ---@field Width number
 ---@field Elements TextPiece[]
 
+---@class CreatedUIElements
+---@field HorizontalLayoutGroup HorizontalLayoutGroup
+---@field Children Label[]
+
+
 ---Errors if Position field is not a number or negative, otherwise returns rounded field
 ---@param n integer
 ---@param varname string
 ---@return integer
 local function TestPositionField(n, varname)
-    if type(n) ~= "number" then
-        error("'" .. varname .. "' is of type " .. type(n) .. " instead of integer");
-    elseif n < 0 then
-        error("'" .. varname .. "' is lower than 0");
-    end
+    assert(type(n) == "number",
+        "'" .. varname .. "' is of type " .. type(n) .. " instead of integer");
+    assert(n >= 0, "'" .. varname .. "' is lower than 0");
     return math.floor(n);
 end
 
@@ -75,9 +82,9 @@ end
 local function CreatePosition(From, To)
     From = TestPositionField(From, "From")
     To = TestPositionField(To, "To")
-    if From > To then
-        error("'From' (" .. tostring(From) .. ") is higher than 'To' (" .. tostring(To) .. ")")
-    end
+
+    assert(From <= To, "'From' (" .. tostring(From) .. ") is higher than 'To' (" .. tostring(To) .. ")");
+
     return { From = From, To = To };
 end
 
@@ -85,18 +92,15 @@ end
 local function TestPosition(Position)
     TestPositionField(Position.From, "From");
     TestPositionField(Position.To, "To");
-    if Position.From > Position.To then
-        error("'From' (" .. tostring(Position.From) .. ") is higher than 'To' (" .. tostring(Position.To) .. ")")
-    end
+    assert(Position.From <= Position.To,
+        "'From' (" .. tostring(Position.From) .. ") is higher than 'To' (" .. tostring(Position.To) .. ")")
 end
 
 ---@param Content string
 ---@param PositionInOriginal Position
 ---@return Tag
 local function CreateTag(Content, PositionInOriginal)
-    if type(Content) ~= "string" then
-        error("'Content' is of type " .. type(Content) .. "instead of string")
-    end
+    assert(type(Content) == "string", "'Content' is of type " .. type(Content) .. "instead of string");
     TestPosition(PositionInOriginal);
     return { Content = Content, Type = ElementType.Tag, PositionInOriginal = PositionInOriginal };
 end
@@ -105,11 +109,9 @@ end
 ---@return Newline
 local function CreateNewline(PositionInOriginal)
     TestPosition(PositionInOriginal);
-    if PositionInOriginal.From ~= PositionInOriginal.To then
-        error("Position.From (" ..
-            tostring(PositionInOriginal.From) ..
-            ") is not equal to Position.To (" .. tostring(PositionInOriginal.To) .. ")");
-    end
+    assert(PositionInOriginal.From == PositionInOriginal.To, "Position.From (" ..
+        tostring(PositionInOriginal.From) ..
+        ") is not equal to Position.To (" .. tostring(PositionInOriginal.To) .. ")");
     return { Type = ElementType.Newline, PositionInOriginal = PositionInOriginal };
 end
 
@@ -126,15 +128,26 @@ end
 ---@param Color? string
 ---@return TextPiece
 local function CreateTextPiece(Text, PositionInOriginal, Color)
-    if type(Text) ~= "string" then
-        error("'Text' is of type " .. type(Text) .. " instead of string");
-    end
-    if type(Color) ~= "nil" and type(Color) ~= "string" then
-        error("'Color' is of type " .. type(Color) .. " instead of string")
-    end
+    assert(type(Text) == "string",
+        "'Text' is of type " .. type(Text) .. " instead of string");
+    assert(type(Color) == "nil" or type(Color) == "string", "'Color' is of type " .. type(Color) .. " instead of string");
     TestPosition(PositionInOriginal);
 
-    return { Text = Text, PositionInOriginal = PositionInOriginal, Type = ElementType.TextPiece, Color = Color };
+    ---@type integer?, _
+    local pos, _ = string.find(Text:reverse(), "%s");
+    if pos ~= nil then
+        pos = #Text - pos + 1;
+    end
+
+
+    return {
+        Text = Text,
+        PositionInOriginal = PositionInOriginal,
+        Type = ElementType.TextPiece,
+        Color = Color,
+        LastSpace =
+            pos
+    };
 end
 
 ---@param Text string
@@ -209,9 +222,8 @@ local function GetElements(Text)
                 tostring(parsingmode) .. ". Please report this to the Warzone Modding Community")
         end
     end
-    if parsingmode == ParsingMode.ParsingFirstCharOfColor or parsingmode == ParsingMode.ParsingOtherCharsOfColor then
-        error("'<' never closed (From: " .. tostring(from) .. "; To: " .. tostring(to) .. ")")
-    end
+    assert(parsingmode ~= ParsingMode.ParsingFirstCharOfColor and parsingmode ~= ParsingMode.ParsingOtherCharsOfColor,
+        "'<' never closed (From: " .. tostring(from) .. "; To: " .. tostring(to) .. ")");
     if TextBuffer ~= "" then
         table.insert(Elements, CreateTextPiece(TextBuffer, CreatePosition(from, to)));
     end
@@ -230,14 +242,19 @@ local function GetTextWidth(str)
     return width;
 end
 
+---@param str string
+---@return integer
+local function CalculateWidthToAdd(str)
+    return math.ceil(GetTextWidth(str) + Constants.GapSize + Constants.ExtraSpacePerText);
+end
+
+
 ---@param TextPiece TextPiece
 ---@param CharIndex integer
 ---@return Element[]
 local function AddNewlines(TextPiece, CharIndex)
-    if #TextPiece.Text < CharIndex then
-        error("TextPiece size (" .. tostring(#TextPiece.Text) ..
-            ") is smaller than CharIndex (" .. tostring(CharIndex) .. ")")
-    end
+    assert(#TextPiece.Text >= CharIndex, "TextPiece size (" .. tostring(#TextPiece.Text) ..
+        ") is smaller than CharIndex (" .. tostring(CharIndex) .. ")");
 
     CharIndex = CharIndex - 1;
 
@@ -309,35 +326,14 @@ local function Extend(a, b)
     end
 end
 
----@param beforeWordbreak {Width: number, Elements: TextPiece[]}
----@param afterWordbreak {Width: number, Elements: TextPiece[]}
----@param toAdd TextPiece
----@param didAWordbreak boolean
-local function AddToElements(beforeWordbreak, afterWordbreak, toAdd, didAWordbreak)
-    ---@type integer
-    local beforeWordbreakLength = #beforeWordbreak.Elements;
-    if didAWordbreak and beforeWordbreakLength ~= 0 then
-        ---@type TextPiece
-        local latestTextPiece = beforeWordbreak.Elements[beforeWordbreakLength];
-        beforeWordbreak.Width = beforeWordbreak.Width + GetTextWidth(toAdd.Text);
-        beforeWordbreak.Elements[beforeWordbreakLength] = CreateTextPiece(latestTextPiece.Text .. toAdd.Text,
-            CreatePosition(latestTextPiece.PositionInOriginal.From, toAdd.PositionInOriginal.To), latestTextPiece.Color);
-    else
-        afterWordbreak.Width = afterWordbreak.Width + math.ceil(GetTextWidth(toAdd.Text)) +
-            Constants.ExtraSpacePerText + Constants.GapSize + Constants.LeftPadding;
-        table.insert(afterWordbreak.Elements, toAdd);
-    end
-end
-
-
 
 ---@param Elements Element[]
 ---@param MaxWidth number
 ---@param ExpectedDepth integer
 ---@return Line[]
 local function ParseElements(Elements, MaxWidth, ExpectedDepth)
-    ---@type Line[]
-    local toReturn = {}
+    ---@type boolean
+    local didAWordbreak = false;
 
     ---@type integer
     local i = 1;
@@ -345,29 +341,124 @@ local function ParseElements(Elements, MaxWidth, ExpectedDepth)
     ---@type string
     local currentColor = "";
 
-    ---@type {Width: number, Elements: TextPiece[]}
-    local beforeWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
+    ---@type {before: Line, after: Line, output: Line[], clearAll: fun(self), clearBefore: fun(self), clearAfter: fun(self), add: fun(self, toAdd: TextPiece), commitBefore: fun(self, includeLast: boolean), commitAll: fun(self), manageWordbreak: fun(self)}
+    local buffer = {
+        before = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} },
+        after = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} },
+        output = {}
+    };
 
-    ---@type {Width: number, Elements: TextPiece[]}
-    local afterWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
+    function buffer.clearAll(self)
+        self.before = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
+        self.after = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
+    end
 
-    ---@type boolean
-    local didAWordbreak = false;
+    function buffer.clearBefore(self)
+        self.before = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
+    end
 
+    function buffer.clearAfter(self)
+        self.after = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
+    end
+
+    function buffer.add(self, toAdd)
+        ---@type integer
+        local length = #self.before.Elements;
+        if didAWordbreak and length ~= 0 then
+            ---@type TextPiece
+            local latest = self.before.Elements[length];
+            self.before.Width = self.before.Width + GetTextWidth(toAdd.Text);
+            self.before.Elements[length] = CreateTextPiece(latest.Text .. toAdd.Text,
+                CreatePosition(latest.PositionInOriginal.From, toAdd.PositionInOriginal.To), latest.Color)
+        else
+            self.after.Width = self.after.Width + CalculateWidthToAdd(toAdd.Text)
+            table.insert(self.after.Elements, toAdd);
+        end
+    end
+
+    ---@param includeLast boolean
+    function buffer.commitBefore(self, includeLast)
+        if includeLast == nil then
+            includeLast = true;
+        end
+        if includeLast then
+            table.insert(self.output, self.before)
+            self:clearBefore();
+        else
+            ---@type TextPiece
+            local latest = self.before.Elements[#self.before.Elements];
+            table.remove(self.before.Elements, #self.before.Elements);
+            table.insert(self.output, self.before);
+            self.before = {
+                Width = ExpectedDepth * Constants.LeftPadding +
+                    GetTextWidth(latest.Text) + Constants.ExtraSpacePerText,
+                Elements = { latest }
+            };
+        end
+    end
+
+    function buffer.commitAll(self)
+        ---@type Line
+        local buf = { Width = self.before.Width + self.after.Width + Constants.GapSize, Elements = {} };
+        Extend(buf.Elements, self.before.Elements);
+        Extend(buf.Elements, self.after.Elements);
+        table.insert(self.output, buf);
+        self:clearAll();
+    end
+
+    function buffer.manageWordbreak(self)
+        if #self.after.Elements >= 1 then
+            if didAWordbreak then
+                assert(#self.after.Elements == 1,
+                    "IMPOSSIBLE STATE DETECTED [#self.after.Elements != 1 and wordbreak]\nPlease contact the mod author");
+                self.before.Width = self.before.Width + self.after.Width;
+
+                ---@type TextPiece
+                local Piece1 = self.before.Elements[#self.before.Elements];
+                ---@type TextPiece
+                local Piece2 = self.after.Elements[1];
+
+                self.before.Elements[#self.before.Elements] = CreateTextPiece(
+                    Piece1.Text .. Piece2.Text,
+                    CreatePosition(Piece1.PositionInOriginal.From, Piece2.PositionInOriginal.To), Piece1.Color)
+                self:clearAfter();
+            else
+                ---@type TextPiece
+                local latest = self.after.Elements[#self.after.Elements]
+                ---@type integer?, _
+
+                if latest.LastSpace ~= nil then
+                    table.remove(self.after.Elements, #self.after.Elements);
+
+                    ---@type Element[]
+                    local result = AddNewlines(latest, #latest.Text);
+                    ---@type Element
+                    local before = result[1];
+                    ---@cast before TextPiece
+
+                    ---@type Element
+                    local after = result[3];
+                    ---@cast after TextPiece
+
+                    self.before.Width = self.before.Width + self.after.Width + Constants.GapSize
+                    Extend(self.before.Elements, self.after.Elements)
+                    Extend(self.before.Elements, { before, after })
+                    self:clearAfter();
+                else
+                    self.before.Width = self.before.Width + self.after.Width + Constants.GapSize
+                    Extend(self.before.Elements, self.after.Elements)
+                    self:clearAfter();
+                end
+            end
+            didAWordbreak = true;
+        end
+    end
 
     while i <= #Elements do
         ---@type Element
         local element = Elements[i];
         if element.Type == ElementType.Newline then
-            ---@type {Width: number, Elements: TextPiece[]};
-            local buffer = { Width = beforeWordbreak.Width, Elements = {} }
-            Extend(buffer.Elements, beforeWordbreak.Elements);
-            buffer.Width = buffer.Width + afterWordbreak.Width;
-            Extend(buffer.Elements, afterWordbreak.Elements);
-            table.insert(toReturn, buffer);
-
-            beforeWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
-            afterWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
+            buffer:commitAll();
             didAWordbreak = false;
             i = i + 1;
         elseif element.Type == ElementType.Tag then
@@ -376,36 +467,57 @@ local function ParseElements(Elements, MaxWidth, ExpectedDepth)
             didAWordbreak = false;
             i = i + 1;
         elseif element.Type == ElementType.WordBreak then
-            beforeWordbreak.Width = beforeWordbreak.Width + afterWordbreak.Width + Constants.GapSize -
-                Constants.LeftPadding;
-            Extend(beforeWordbreak.Elements, afterWordbreak.Elements);
-            afterWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
-            didAWordbreak = true;
+            buffer:manageWordbreak();
             i = i + 1;
         elseif element.Type == ElementType.TextPiece then
             i = i + 1;
             ---@cast element TextPiece
-
             element.Color = currentColor;
+
             ---@type number
-            local currentWidth = beforeWordbreak.Width + afterWordbreak.Width + Constants.GapSize - Constants
-                .LeftPadding;
+            local currentWidth = buffer.before.Width + buffer.after.Width -
+                Constants.LeftPadding;
 
             ---@type integer
             local ci = 1
+
             while ci <= #element.Text do
                 ---@type string
                 local c = string.sub(element.Text, ci, ci);
                 ---@type number
                 local width = CharWidths[c] or Constants.DefaultCharWidth;
-                if math.ceil(currentWidth + width) + Constants.ExtraSpacePerText + Constants.GapSize + Constants.LeftPadding >= MaxWidth then
-                    ---@type string, integer
-                    local _, count = string.gsub(element.Text, "%s", "", 1);
-                    if count == 0 and #beforeWordbreak.Elements > 0 then
-                        table.insert(toReturn, beforeWordbreak);
-                        beforeWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
-                        currentWidth = afterWordbreak.Width;
-                        ci = 1;
+                if c == " " and didAWordbreak then
+                    ---@type Element[]
+                    local result = AddNewlines(element, ci);
+
+                    ---@type Element
+                    local before = result[1]
+                    ---@cast before TextPiece
+
+                    ---@type Element
+                    local after = result[3]
+                    ---@cast after TextPiece
+
+                    ---@type TextPiece
+                    local lastBeforeElement = buffer.before.Elements[#buffer.before.Elements];
+                    buffer.before.Elements[#buffer.before.Elements] = CreateTextPiece(
+                        lastBeforeElement.Text .. before.Text,
+                        CreatePosition(lastBeforeElement.PositionInOriginal.From, before.PositionInOriginal.To),
+                        lastBeforeElement.Color
+                    )
+
+                    element = after;
+                    ci = 1;
+
+                    didAWordbreak = false;
+                elseif math.ceil(currentWidth + width) + Constants.ExtraSpacePerText + Constants.GapSize + Constants.LeftPadding >= MaxWidth then
+                    if #buffer.before.Elements > 0 and not didAWordbreak then
+                        buffer:commitBefore(true);
+                        currentWidth = buffer.after.Width
+                    elseif #buffer.before.Elements > 1 and didAWordbreak then
+                        buffer:commitBefore(false);
+                        currentWidth = buffer.before.Width + buffer.after.Width -
+                            Constants.LeftPadding;
                     else
                         ---@type Element[]
                         local result = AddNewlines(element, ci);
@@ -417,52 +529,69 @@ local function ParseElements(Elements, MaxWidth, ExpectedDepth)
                         local after = result[3]
                         ---@cast after TextPiece
 
-                        AddToElements(beforeWordbreak, afterWordbreak, before, didAWordbreak);
+                        buffer:add(before)
+                        buffer:commitAll();
 
-                        ---@type Line;
-                        local buffer = { Width = 0, Elements = {} };
-                        if #beforeWordbreak.Elements > 0 then
-                            buffer.Width = beforeWordbreak.Width;
-                            Extend(buffer.Elements, beforeWordbreak.Elements);
-                        end
-
-
-                        buffer.Width = buffer.Width + afterWordbreak.Width;
-                        Extend(buffer.Elements, afterWordbreak.Elements);
-                        table.insert(toReturn, buffer);
-
-                        beforeWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
-                        afterWordbreak = { Width = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding, Elements = {} };
-
-                        didAWordbreak = false;
                         element = after;
                         ci = 1;
-                        currentWidth = -Constants.GapSize + ExpectedDepth * Constants.LeftPadding;
 
+                        didAWordbreak = false;
+
+                        currentWidth = buffer.before.Width + buffer.after.Width -
+                            Constants.LeftPadding + Constants.ExtraSpacePerText;
                     end
                 else
                     ci = ci + 1;
                     currentWidth = currentWidth + width;
                 end
             end
-            AddToElements(beforeWordbreak, afterWordbreak, element, didAWordbreak);
-            didAWordbreak = false;
+            buffer:add(element);
         end
     end
 
-    ---@type Line;
-    local buffer = { Width = beforeWordbreak.Width, Elements = {} }
-    Extend(buffer.Elements, beforeWordbreak.Elements);
-    buffer.Width = buffer.Width + afterWordbreak.Width;
-    Extend(buffer.Elements, afterWordbreak.Elements);
-    table.insert(toReturn, buffer);
+    buffer:commitAll();
 
-    return toReturn;
+    return buffer.output
+end
+
+---@param UIGroup HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject | RootParent
+---@param Lines Line[]
+---@return CreatedUIElements[]
+local function AddElementsToUI(UIGroup, Lines)
+    ---@type HorizontalLayoutGroup[]
+    local created_elements = {};
+
+    for _, line in ipairs(Lines) do
+        ---@type HorizontalLayoutGroup
+        local hlg = UI.CreateHorizontalLayoutGroup(UIGroup);
+
+        ---@type CreatedUIElements
+        local created_element = { Children = {}, HorizontalLayoutGroup = hlg };
+
+        for _, textpiece in ipairs(line.Elements) do
+            if textpiece.Text ~= "" then
+                ---@type Label
+                local label = UI.CreateLabel(hlg);
+                table.insert(created_element.Children, label);
+
+                if string.sub(textpiece.Color, 1, 1) ~= "#" then
+                    textpiece.Color = Colors[textpiece.Color]
+                end
+
+                if textpiece.Color ~= nil and not (textpiece.Color == "") then
+                    label.SetColor(textpiece.Color);
+                end
+                label.SetText(textpiece.Text);
+            end
+        end
+        table.insert(created_elements, created_element);
+    end
+    return created_elements;
 end
 
 ---Internal functions
 ---@type table<string, function | table<string, number>>
-KaninchenLibTextWriter = {
+KaninchenTextWriterLibInternals = {
     TestPositionField = TestPositionField,
     CreatePosition = CreatePosition,
     TestPosition = TestPosition,
@@ -478,15 +607,18 @@ KaninchenLibTextWriter = {
     Constants = Constants,
     ParsingMode = ParsingMode,
     ElementType = ElementType,
-    AddToElements = AddToElements
+    AddElementsToUI = AddElementsToUI,
+    CalculateWidthToAdd = CalculateWidthToAdd
 };
 
----@param UIGroup HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject
+
+---@param UIGroup HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject | RootParent
 ---@param Text string
 ---@param MaxWidth? number
----@param AncestorCountWithoutRoot? integer
-function AddStringToUI(UIGroup, Text, MaxWidth, AncestorCountWithoutRoot)
-    AncestorCountWithoutRoot = AncestorCountWithoutRoot or 0;
+---@param AncestorCount? integer
+---@return CreatedUIElements[]
+function AddStringToUI(UIGroup, Text, MaxWidth, AncestorCount)
+    AncestorCount = AncestorCount or 1;
 
     if MaxWidth == nil then
         if UIGroup.GetPreferredWidth ~= nil then
@@ -497,25 +629,5 @@ function AddStringToUI(UIGroup, Text, MaxWidth, AncestorCountWithoutRoot)
     end
 
     MaxWidth = math.max(Constants.MinWidth, MaxWidth);
-
-    for _, line in ipairs(ParseElements(GetElements(Text), MaxWidth, AncestorCountWithoutRoot + 2)) do
-        ---@type HorizontalLayoutGroup
-        local hlg = UI.CreateHorizontalLayoutGroup(UIGroup);
-
-        for _, textpiece in ipairs(line.Elements) do
-            if textpiece.Text ~= "" then
-                ---@type Label
-                local label = UI.CreateLabel(hlg);
-
-                if string.sub(textpiece.Color, 1, 1) ~= "#" then
-                    textpiece.Color = Colors[textpiece.Color]
-                end
-
-                if textpiece.Color ~= nil and not (textpiece.Color == "") then
-                    label.SetColor(textpiece.Color);
-                end
-                label.SetText(textpiece.Text);
-            end
-        end
-    end
+    return AddElementsToUI(UIGroup, ParseElements(GetElements(Text), MaxWidth, AncestorCount))
 end
