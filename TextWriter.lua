@@ -844,10 +844,10 @@ function AddStringToUI(UIGroup, Text, Options)
         if UIGroup.GetPreferredWidth ~= nil then
             maxwidth = UIGroup.GetPreferredWidth();
         else
-            maxwidth = -1;
+            maxwidth = 500;
         end
     else
-        maxwidth = 500;
+        maxwidth = Options.MaxWidth
     end
     maxwidth = math.max(Constants.MinWidth, maxwidth);
 
