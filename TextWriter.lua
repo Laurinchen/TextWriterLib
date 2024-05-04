@@ -4,7 +4,6 @@ require("Colors");
 
 ---@cast UI UI
 
-
 ---@type table<string, number>
 local Constants = {
     GapSize = 15.4,        -- CSS Flex gapsize == 1em == 15.4px
@@ -14,12 +13,14 @@ local Constants = {
     MinWidth = 30,         -- Without it, the code might loop infinitely with a too small MaxWidth
 };
 
+---@type string[]
+local RecognisedSpecialTags = { "wbr", "/", };
 
 ---@enum ParsingMode
 local ParsingMode = {
     NotParsing = 0,
-    ParsingFirstCharOfColor = 1,
-    ParsingOtherCharsOfColor = 2
+    ParsingFirstCharOfTag = 1,
+    ParsingOtherCharsOfTag = 2
 };
 
 ---@enum ElementType
@@ -28,7 +29,21 @@ local ElementType = {
     Tag = "Tag",
     Newline = "Newline",
     WordBreak = "WordBreak"
-}
+};
+
+
+
+---@class ProblemHandler
+---@field Cancel? boolean
+---@field PrintToUI? boolean
+---@field RaiseException? boolean
+
+---@class Options
+---@field MaxWidth? integer
+---@field WarningHandler? ProblemHandler
+---@field ErrorHandler? ProblemHandler
+---@field AncestorCount? integer
+
 
 ---@class Element
 ---@field Type ElementType
@@ -37,6 +52,37 @@ local ElementType = {
 ---@class Position
 ---@field From integer
 ---@field To integer
+
+---@enum ResultType
+ResultType = {
+    Success = 0,
+    Warning = 1,
+    Error = 2,
+};
+
+---@enum VerifyProblemType
+VerifyProblemType = {
+    --- Errors
+
+    UnclosedLessThan = "UnclosedLessThan",
+    MalformedHexCode = "MalformedHexCode",
+
+    --- Warnings
+
+    UnrecognisedTag = "UnrecognisedTag",
+    UnrecognisedTagWithValidHexcode = "UnrecognisedTagWithValidHexcode",
+    EmptyTag = "EmptyTag",
+    SymbolWithNoWidthDefined = "SymbolWithNoWidthDefined"
+};
+
+---@class Problem
+---@field VerifyProblemType VerifyProblemType
+---@field Description string
+---@field Position Position
+
+---@class VerifyResult
+---@field Type ResultType
+---@field Problems? Problem[]
 
 ---@class TextPiece: Element
 ---@field Text string
@@ -60,8 +106,40 @@ local ElementType = {
 ---@field Elements TextPiece[]
 
 ---@class CreatedUIElements
----@field HorizontalLayoutGroup HorizontalLayoutGroup
+---@field LayoutGroup HorizontalLayoutGroup | VerticalLayoutGroup
 ---@field Children Label[]
+
+---@class AddStringToUIResult
+---@field Success boolean
+---@field List CreatedUIElements[]
+---@field Problems? Problem[]
+
+---@generic T
+---@param obj T
+---@param map table<any, T>
+---@return any?
+local function GetKeyFromValue(obj, map)
+    for key, value in pairs(map) do
+        if value == obj then
+            return key
+        end
+    end
+    return nil
+end
+
+---@param Cancel? boolean
+---@param PrintToUI? boolean
+---@param RaiseException? boolean
+---@return ProblemHandler
+---@nodiscard
+function ProblemHandlerFactory(Cancel, PrintToUI, RaiseException)
+    ---@type ProblemHandler
+    local handler = {};
+    handler.Cancel = Cancel or false;
+    handler.PrintToUI = PrintToUI or false;
+    handler.RaiseException = RaiseException or false;
+    return handler;
+end
 
 
 ---Errors if Position field is not a number or negative, otherwise returns rounded field
@@ -150,6 +228,144 @@ local function CreateTextPiece(Text, PositionInOriginal, Color)
     };
 end
 
+---@param ProblemType VerifyProblemType
+---@param Position Position
+---@param Description string
+---@return Problem
+local function CreateVerifyProblem(ProblemType, Position, Description)
+    assert(VerifyProblemType[ProblemType], "Unrecognised ProblemType: " .. ProblemType);
+    TestPosition(Position);
+    assert(type(Description) == "string", "'Description' is of type " .. type(Description) .. "instead of string");
+    return { VerifyProblemType = ProblemType, Position = Position, Description = Description };
+end
+
+---@param code string
+---@return boolean
+local function IsColorCode(code)
+    ---@type integer?, _
+    local pos, _ = code:find("[a-f0-9][a-f0-9][a-f0-9][a-f0-9][a-f0-9][a-f0-9]");
+    if pos then
+        return true;
+    else
+        return false;
+    end
+end
+
+
+
+---@param Text string
+---@return VerifyResult
+---@nodiscard
+function VerifyString(Text)
+    ---@type ResultType
+    local resulttype = ResultType.Success;
+    ---@type Problem[]
+    local problems = {};
+    ---@type ParsingMode
+    local parsingmode = ParsingMode.NotParsing;
+    ---@type string
+    local TagBuffer = "";
+    ---@type integer
+    local from = 1;
+    ---@type integer
+    local to = 0;
+
+    for ci = 1, #Text do
+        to = to + 1;
+        ---@type string
+        local c = Text:sub(ci, ci);
+        if parsingmode == ParsingMode.NotParsing then
+            if c == "<" then
+                parsingmode = ParsingMode.ParsingFirstCharOfTag
+            elseif CharWidths[c] == nil and c ~= '\n' then
+                table.insert(problems, CreateVerifyProblem(
+                    VerifyProblemType.SymbolWithNoWidthDefined,
+                    CreatePosition(ci, ci),
+                    "'" .. c .. "' has no width defined in CharWidths.lua"
+                ));
+                resulttype = math.max(resulttype, ResultType.Warning);
+            end
+        elseif parsingmode == ParsingMode.ParsingFirstCharOfTag then
+            if c == "<" then
+                parsingmode = ParsingMode.NotParsing;
+            else
+                from = to - 1;
+                if c ~= ">" then
+                    TagBuffer = c;
+                    parsingmode = ParsingMode.ParsingOtherCharsOfTag
+                else
+                    table.insert(problems, CreateVerifyProblem(
+                        VerifyProblemType.EmptyTag,
+                        CreatePosition(from, to),
+                        '"</>" instead of "<>" should be used'
+                    ))
+                    resulttype = math.max(resulttype, ResultType.Warning);
+                    parsingmode = ParsingMode.NotParsing
+                    from = to+1;
+                end
+            end
+        elseif parsingmode == ParsingMode.ParsingOtherCharsOfTag then
+            if c == ">" then
+                TagBuffer = TagBuffer:lower();
+                if TagBuffer:sub(1, 1) == "#" then
+                    if not IsColorCode(TagBuffer:sub(2)) then
+                        table.insert(problems, CreateVerifyProblem(
+                            VerifyProblemType.MalformedHexCode,
+                            CreatePosition(from, to),
+                            "Invalid hexcode '" .. TagBuffer .. "'"
+                        ))
+                        resulttype = math.max(resulttype, ResultType.Error);
+                    end
+                elseif (not Colors[TagBuffer]) and (not GetKeyFromValue(TagBuffer, RecognisedSpecialTags)) then
+                    if IsColorCode(TagBuffer) then
+                        table.insert(problems, CreateVerifyProblem(
+                            VerifyProblemType.UnrecognisedTagWithValidHexcode,
+                            CreatePosition(from, to),
+                            "Unrecognised Tag '" .. TagBuffer .. "', seems like a # at the start was forgotten"
+                        ));
+                        resulttype = math.max(resulttype, ResultType.Warning);
+                    else
+                        table.insert(problems, CreateVerifyProblem(
+                            VerifyProblemType.UnrecognisedTag,
+                            CreatePosition(from, to),
+                            "Unrecognised Tag '" .. TagBuffer .. "'"
+                        ));
+                        resulttype = math.max(resulttype, ResultType.Warning);
+                    end
+                end
+                parsingmode = ParsingMode.NotParsing;
+                TagBuffer = "";
+            else
+                TagBuffer = TagBuffer .. c;
+            end
+        else
+            error("[Internal] unknown parsingmode " ..
+                tostring(parsingmode) .. ". Please report this to the Warzone Modding Community")
+        end
+    end
+    if parsingmode ~= ParsingMode.NotParsing then
+        ---@type integer?, _
+        local pos, _ = string.find(Text:reverse(), "<");
+        pos = #Text - pos + 1;
+
+
+        table.insert(problems, CreateVerifyProblem(
+            VerifyProblemType.UnclosedLessThan,
+            CreatePosition(pos, to),
+            "Last '<' never has been closed"
+        ))
+        resulttype = math.max(resulttype, ResultType.Error);
+    end
+
+
+    ---@type VerifyResult
+    local to_return = { Type = resulttype };
+    if resulttype > 0 then
+        to_return.Problems = problems;
+    end
+    return to_return
+end
+
 ---@param Text string
 ---@return Element[]
 local function GetElements(Text)
@@ -165,14 +381,14 @@ local function GetElements(Text)
     ---@type integer
     local to = 0;
 
-    for ci = 1, string.len(Text) do
+    for ci = 1, #Text do
         to = to + 1;
 
         ---@type string
         local c = string.sub(Text, ci, ci);
         if parsingmode == ParsingMode.NotParsing then
             if c == "<" then
-                parsingmode = ParsingMode.ParsingFirstCharOfColor;
+                parsingmode = ParsingMode.ParsingFirstCharOfTag;
             else
                 if c == "\n" then
                     if TextBuffer ~= "" then
@@ -185,7 +401,7 @@ local function GetElements(Text)
                     TextBuffer = TextBuffer .. c;
                 end
             end
-        elseif parsingmode == ParsingMode.ParsingFirstCharOfColor then
+        elseif parsingmode == ParsingMode.ParsingFirstCharOfTag then
             if c == "<" then
                 parsingmode = ParsingMode.NotParsing;
                 TextBuffer = TextBuffer .. "<";
@@ -194,7 +410,7 @@ local function GetElements(Text)
                     table.insert(Elements, CreateTextPiece(TextBuffer, CreatePosition(from, to - 2)));
                 end
                 if c ~= ">" then
-                    parsingmode = ParsingMode.ParsingOtherCharsOfColor;
+                    parsingmode = ParsingMode.ParsingOtherCharsOfTag;
                     TextBuffer = c;
                     from = to - 1;
                 else
@@ -204,7 +420,7 @@ local function GetElements(Text)
                     from = to + 1;
                 end
             end
-        elseif parsingmode == ParsingMode.ParsingOtherCharsOfColor then
+        elseif parsingmode == ParsingMode.ParsingOtherCharsOfTag then
             if c == ">" then
                 parsingmode = ParsingMode.NotParsing;
                 if string.lower(TextBuffer) == "wbr" then
@@ -222,8 +438,6 @@ local function GetElements(Text)
                 tostring(parsingmode) .. ". Please report this to the Warzone Modding Community")
         end
     end
-    assert(parsingmode ~= ParsingMode.ParsingFirstCharOfColor and parsingmode ~= ParsingMode.ParsingOtherCharsOfColor,
-        "'<' never closed (From: " .. tostring(from) .. "; To: " .. tostring(to) .. ")");
     if TextBuffer ~= "" then
         table.insert(Elements, CreateTextPiece(TextBuffer, CreatePosition(from, to)));
     end
@@ -554,7 +768,7 @@ local function ParseElements(Elements, MaxWidth, ExpectedDepth)
     return buffer.output
 end
 
----@param UIGroup HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject | RootParent
+---@param UIGroup UIObject
 ---@param Lines Line[]
 ---@return CreatedUIElements[]
 local function AddElementsToUI(UIGroup, Lines)
@@ -566,7 +780,7 @@ local function AddElementsToUI(UIGroup, Lines)
         local hlg = UI.CreateHorizontalLayoutGroup(UIGroup);
 
         ---@type CreatedUIElements
-        local created_element = { Children = {}, HorizontalLayoutGroup = hlg };
+        local created_element = { Children = {}, LayoutGroup = hlg };
 
         for _, textpiece in ipairs(line.Elements) do
             if textpiece.Text ~= "" then
@@ -612,22 +826,130 @@ KaninchenTextWriterLibInternals = {
 };
 
 
----@param UIGroup HorizontalLayoutGroup | VerticalLayoutGroup | EmptyUIObject | RootParent
+---@param UIGroup UIObject
 ---@param Text string
----@param MaxWidth? number
----@param AncestorCount? integer
----@return CreatedUIElements[]
-function AddStringToUI(UIGroup, Text, MaxWidth, AncestorCount)
-    AncestorCount = AncestorCount or 1;
-
-    if MaxWidth == nil then
-        if UIGroup.GetPreferredWidth ~= nil then
-            MaxWidth = UIGroup.GetPreferredWidth();
-        else
-            MaxWidth = -1;
-        end
+---@param Options? Options
+---@return AddStringToUIResult?
+function AddStringToUI(UIGroup, Text, Options)
+    if Options == nil then
+        Options = {};
     end
 
-    MaxWidth = math.max(Constants.MinWidth, MaxWidth);
-    return AddElementsToUI(UIGroup, ParseElements(GetElements(Text), MaxWidth, AncestorCount))
+    ---@type integer
+    local ancestorcount = Options.AncestorCount or 1;
+
+    ---@type integer
+    local maxwidth;
+    if Options.MaxWidth == nil then
+        if UIGroup.GetPreferredWidth ~= nil then
+            maxwidth = UIGroup.GetPreferredWidth();
+        else
+            maxwidth = -1;
+        end
+    else
+        maxwidth = 500;
+    end
+    maxwidth = math.max(Constants.MinWidth, maxwidth);
+
+    ---@type VerifyResult
+    local verifyresult = VerifyString(Text);
+
+
+    if verifyresult.Type ~= ResultType.Success then
+        ---@type ProblemHandler
+        local warninghandler = Options.WarningHandler or {PrintToUI=true}
+        ---@type ProblemHandler
+        local errorhandler = Options.ErrorHandler or {PrintToUI = true, RaiseException = true};
+        warninghandler = ProblemHandlerFactory(warninghandler.Cancel, warninghandler.PrintToUI, warninghandler.RaiseException);
+        errorhandler = ProblemHandlerFactory(errorhandler.Cancel, errorhandler.PrintToUI, errorhandler.RaiseException);
+
+        ---@type boolean
+        local should_cancel = false;
+
+        ---@type ResultType
+        local resulttype = ResultType.Warning;
+
+        ---@type CreatedUIElements
+        local group;
+
+        local exceptionToRaise = "";
+        for index, value in ipairs(verifyresult.Problems) do
+            ---@type boolean
+            local iserror = false;
+            if GetKeyFromValue(value.VerifyProblemType, { VerifyProblemType.MalformedHexCode, VerifyProblemType.UnclosedLessThan }) then
+                iserror = true;
+            end
+
+            ---@type string
+            local errstring = "\n=====";
+
+            if iserror then
+                errstring = errstring .. "ERROR ";
+                resulttype = ResultType.Error;
+            else
+                errstring = errstring .. "WARNING ";
+            end
+
+            errstring = errstring .. tostring(index) .. " - " .. value.VerifyProblemType .. '=====\nAt: "'
+                .. Text:sub(value.Position.From, value.Position.To) .. '"\nFrom: '
+                .. tostring(value.Position.From) .. " to " .. tostring(value.Position.To) .. "\n" .. value.Description
+            if iserror then
+                if errorhandler.Cancel then
+                    should_cancel = true;
+                end
+                if errorhandler.PrintToUI then
+                    if group == nil then
+                        group = {LayoutGroup=UI.CreateVerticalLayoutGroup(UIGroup), Children={}};
+                    end
+
+                    ---@type Label
+                    local created_label = UI.CreateLabel(group.LayoutGroup);
+                    created_label.SetText(errstring);
+                    created_label.SetColor("#ff0000");
+
+                    table.insert(group.Children, created_label);
+                end
+                if errorhandler.RaiseException then
+                    exceptionToRaise = exceptionToRaise .. errstring;
+                end
+            else
+                if warninghandler.Cancel then
+                    should_cancel = true;
+                end
+                if warninghandler.PrintToUI then
+                    if group == nil then
+                        group = {LayoutGroup=UI.CreateVerticalLayoutGroup(UIGroup), Children={}};
+                    end
+
+                    ---@type Label
+                    local created_label = UI.CreateLabel(group.LayoutGroup);
+                    created_label.SetText(errstring);
+                    created_label.SetColor("#ffff00");
+
+                    table.insert(group.Children, created_label);
+                end
+                if warninghandler.RaiseException then
+                    exceptionToRaise = exceptionToRaise .. errstring;
+                end
+            end
+        end
+        if group ~= nil then
+            ---@type Label
+            local report_info = UI.CreateLabel(group.LayoutGroup);
+            report_info.SetText("\nPlease report this to the Mod Developer or on the Modmaker Discord");
+            report_info.SetColor("#ff0000");
+            table.insert(group.Children, report_info);
+        end
+        if #exceptionToRaise ~= 0 then
+            error(exceptionToRaise);
+        end
+        ---@type CreatedUIElements[]
+        local result = {group};
+        if should_cancel ~= true then
+            Extend(result, AddElementsToUI(UIGroup, ParseElements(GetElements(Text), maxwidth, ancestorcount)))
+        end
+        return {Type=resulttype, Problems=verifyresult.Problems, List=result}
+    else
+        return {Type=ResultType.Success, List=AddElementsToUI(UIGroup, ParseElements(GetElements(Text), maxwidth, ancestorcount))}
+    end
 end
